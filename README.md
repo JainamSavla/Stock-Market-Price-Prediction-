@@ -1,4 +1,6 @@
-# AI-Powered Stock Prediction Dashboard
+# AI-Powered Stock Prediction Dashboard:-https://stockmarketpredicto.streamlit.app/
+
+
 
 A local stock analysis and prediction dashboard built with Python, Streamlit, and XGBoost. Analyze any stock globally, view technical indicators, and get AI-powered price predictions.
 
