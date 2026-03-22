@@ -149,9 +149,11 @@ def compute_volume_features(df: pd.DataFrame, volume_col: str = 'Volume') -> pd.
         DataFrame with volume feature columns added
     """
     df = df.copy()
+    epsilon = 1e-10  # Small value to prevent division by zero
 
-    # Volume change (day-over-day)
-    df['volume_change'] = df[volume_col].pct_change()
+    # Volume change (day-over-day) - use safe division
+    prev_volume = df[volume_col].shift(1)
+    df['volume_change'] = (df[volume_col] - prev_volume) / (prev_volume + epsilon)
 
     # 20-day volume moving average
     df['volume_ma_20'] = df[volume_col].rolling(window=20).mean()
@@ -171,12 +173,13 @@ def compute_price_distance(df: pd.DataFrame, close_col: str = 'Close') -> pd.Dat
         DataFrame with price distance columns added
     """
     df = df.copy()
+    epsilon = 1e-10  # Small value to prevent division by zero
 
     # Distance from MA20 as percentage
-    df['price_dist_ma20'] = (df[close_col] - df['ma_20']) / df['ma_20'] * 100
+    df['price_dist_ma20'] = (df[close_col] - df['ma_20']) / (df['ma_20'] + epsilon) * 100
 
     # Distance from MA50 as percentage
-    df['price_dist_ma50'] = (df[close_col] - df['ma_50']) / df['ma_50'] * 100
+    df['price_dist_ma50'] = (df[close_col] - df['ma_50']) / (df['ma_50'] + epsilon) * 100
 
     return df
 
@@ -241,6 +244,10 @@ def engineer_all_features(df: pd.DataFrame) -> pd.DataFrame:
     df = compute_volume_features(df)
     df = compute_price_distance(df)
     df = compute_target_variables(df)
+
+    # Sanitize data: replace inf/-inf with NaN, then drop rows with NaN
+    df = df.replace([np.inf, -np.inf], np.nan)
+    df = df.dropna()
 
     return df
 

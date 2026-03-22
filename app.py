@@ -251,83 +251,116 @@ def compute_support_resistance(df: pd.DataFrame, current_price: float):
 
 
 def compute_trend_analysis(df: pd.DataFrame):
-    """Compute trend strength, direction, and MA alignment using ADX from ta library."""
+    """
+    Calculate trend strength score from 0 to 100.
+    Uses ADX indicator plus price/MA/MACD checks.
+
+    df must contain columns: High, Low, Close, ma_20, ma_50, ma_200, macd, macd_signal.
+    """
     from ta.trend import ADXIndicator
 
-    close = df['Close'].iloc[-1]
-    ma20 = df['ma_20'].iloc[-1] if 'ma_20' in df.columns and not pd.isna(df['ma_20'].iloc[-1]) else close
-    ma50 = df['ma_50'].iloc[-1] if 'ma_50' in df.columns and not pd.isna(df['ma_50'].iloc[-1]) else close
-    ma200 = df['ma_200'].iloc[-1] if 'ma_200' in df.columns and not pd.isna(df['ma_200'].iloc[-1]) else close
-
-    # Trend direction
-    if close > ma20 > ma50:
-        direction = "Uptrend"
-    elif close < ma20 < ma50:
-        direction = "Downtrend"
-    else:
-        direction = "Sideways"
-
-    # MA alignment
-    if ma20 > ma50 > ma200:
-        alignment = "Bullish"
-    elif ma20 < ma50 < ma200:
-        alignment = "Bearish"
-    else:
-        alignment = "Mixed"
-
-    # Trend strength scoring using ADX + price/MA/MACD checks
-    score = 0
-
-    # Compute ADX using ta library
     try:
+        # Use last 100 rows for calculation
+        recent = df.tail(100).copy()
+
+        if len(recent) < 20:
+            return {
+                "strength": 0,
+                "strength_label": "Unknown",
+                "direction": "Unknown",
+                "alignment": "Unknown"
+            }
+
+        # Calculate ADX using ta library
         adx_indicator = ADXIndicator(
-            high=df['High'], low=df['Low'], close=df['Close'], window=14
+            high=recent['High'],
+            low=recent['Low'],
+            close=recent['Close'],
+            window=14
         )
+
         adx_value = adx_indicator.adx().iloc[-1]
-        if pd.isna(adx_value):
-            adx_value = 0.0
-    except Exception:
-        adx_value = 0.0
 
-    if adx_value > 25:
-        score += 25
-    if adx_value > 40:
-        score += 15  # additional
+        # Get latest values
+        latest = recent.iloc[-1]
+        current_price = latest['Close']
+        ma20 = latest['ma_20'] if 'ma_20' in recent.columns and pd.notna(latest['ma_20']) else None
+        ma50 = latest['ma_50'] if 'ma_50' in recent.columns and pd.notna(latest['ma_50']) else None
+        ma200 = latest['ma_200'] if 'ma_200' in recent.columns and pd.notna(latest['ma_200']) else None
+        macd_line = latest['macd'] if 'macd' in recent.columns and pd.notna(latest['macd']) else None
+        macd_signal = latest['macd_signal'] if 'macd_signal' in recent.columns and pd.notna(latest['macd_signal']) else None
 
-    if close > ma20:
-        score += 15
-    if close > ma50:
-        score += 15
-    if close > ma200:
-        score += 15
+        # Score calculation
+        score = 0
 
-    # MACD line > Signal line
-    macd_val = df['macd'].iloc[-1] if 'macd' in df.columns and not pd.isna(df['macd'].iloc[-1]) else 0
-    macd_sig = df['macd_signal'].iloc[-1] if 'macd_signal' in df.columns and not pd.isna(df['macd_signal'].iloc[-1]) else 0
-    if macd_val > macd_sig:
-        score += 15
+        if pd.notna(adx_value):
+            if adx_value > 25:
+                score += 25
+            if adx_value > 40:
+                score += 15
 
-    # Cap at 100
-    score = min(score, 100)
+        if ma20 is not None and current_price > ma20:
+            score += 15
+        if ma50 is not None and current_price > ma50:
+            score += 15
+        if ma200 is not None and current_price > ma200:
+            score += 15
 
-    # Label the score
-    if score <= 25:
-        strength_label = "Very Weak"
-    elif score <= 45:
-        strength_label = "Weak"
-    elif score <= 65:
-        strength_label = "Moderate"
-    elif score <= 80:
-        strength_label = "Strong"
-    else:
-        strength_label = "Very Strong"
+        if macd_line is not None and macd_signal is not None:
+            if macd_line > macd_signal:
+                score += 15
 
-    return {
-        "strength": score,
-        "strength_label": strength_label,
-        "direction": direction,
-        "alignment": alignment
-    }
+        # Cap at 100
+        score = min(score, 100)
+
+        # Label
+        if score <= 25:
+            strength_label = "Very Weak"
+        elif score <= 45:
+            strength_label = "Weak"
+        elif score <= 65:
+            strength_label = "Moderate"
+        elif score <= 80:
+            strength_label = "Strong"
+        else:
+            strength_label = "Very Strong"
+
+        # Direction
+        if ma20 is not None and ma50 is not None:
+            if current_price > ma20 and current_price > ma50:
+                direction = "Uptrend"
+            elif current_price < ma20 and current_price < ma50:
+                direction = "Downtrend"
+            else:
+                direction = "Sideways"
+        else:
+            direction = "Unknown"
+
+        # MA alignment
+        if ma20 is not None and ma50 is not None and ma200 is not None:
+            if ma20 > ma50 > ma200:
+                alignment = "Bullish"
+            elif ma20 < ma50 < ma200:
+                alignment = "Bearish"
+            else:
+                alignment = "Mixed"
+        else:
+            alignment = "Unknown"
+
+        return {
+            "strength": score,
+            "strength_label": strength_label,
+            "direction": direction,
+            "alignment": alignment
+        }
+
+    except Exception as e:
+        return {
+            "strength": 0,
+            "strength_label": "Unknown",
+            "direction": "Unknown",
+            "alignment": "Unknown"
+        }
 
 
 def calculate_expected_range(

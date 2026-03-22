@@ -38,6 +38,24 @@ MODEL_PARAMS = {
 TEST_SIZE = 0.2
 
 
+def sanitize_features(X: pd.DataFrame) -> pd.DataFrame:
+    """
+    Sanitize feature data by replacing inf/-inf with NaN, then filling NaN with 0.
+
+    This is a safety check before passing data to XGBoost to prevent
+    "Input data contains inf or a value too large" errors.
+
+    Args:
+        X: Feature DataFrame
+
+    Returns:
+        Sanitized DataFrame safe for XGBoost
+    """
+    X = X.replace([np.inf, -np.inf], np.nan)
+    X = X.fillna(0)
+    return X
+
+
 def create_xgboost_model(scale_pos_weight: float = 1.0) -> XGBClassifier:
     """
     Create a new XGBoost classifier with default parameters.
@@ -100,7 +118,9 @@ def train_single_model(
         Trained XGBClassifier
     """
     model = create_xgboost_model(scale_pos_weight=scale_pos_weight)
-    model.fit(X_train, y_train)
+    # Sanitize features before training to prevent inf errors
+    X_train_safe = sanitize_features(X_train)
+    model.fit(X_train_safe, y_train)
     return model
 
 
@@ -164,7 +184,9 @@ def train_all_models(
             model = train_single_model(X_train, y_train[target_col], scale_pos_weight=spw)
             models[model_key] = model
 
-            y_pred = model.predict(X_test)
+            # Sanitize test features before prediction
+            X_test_safe = sanitize_features(X_test)
+            y_pred = model.predict(X_test_safe)
             acc = float(accuracy_score(y_test[target_col], y_pred))
             metrics[acc_key] = acc
 
@@ -259,6 +281,9 @@ def predict_with_model(
     # Ensure features are in the right format
     feature_cols = get_feature_columns()
     X = features[feature_cols]
+
+    # Sanitize features before prediction to prevent inf errors
+    X = sanitize_features(X)
 
     # Get prediction
     prediction = model.predict(X)[0]
